@@ -5,6 +5,8 @@ from community import Community, ACTIONS
 
 class PlayerService(Community,Economy):
  def __init__(self,path,catalog,cases):
+  from account_storage import remote_config
+  self.remote_database=remote_config()
   catalog=catalog+json.loads((__import__('pathlib').Path(__file__).parent/'collectibles.json').read_text());super().__init__(path,[s['id'] for s in catalog]);self.skins={s['id']:s for s in catalog};self.cases={s['id']:s for s in cases}
   with self.db() as c:
    c.executescript('''CREATE TABLE IF NOT EXISTS credentials(owner TEXT PRIMARY KEY, username TEXT UNIQUE, salt TEXT, digest TEXT);
@@ -90,7 +92,10 @@ CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY, count INTEGER, re
     if action=='equip':
      item=c.execute('SELECT * FROM items WHERE id=? AND owner=?',(target,uid)).fetchone()
      if not item or item['skin'] not in self.skins or self.skins[item['skin']]['weapon']=='graffiti':raise ValueError('You do not own this skin.')
-     skin=self.skins[item['skin']];c.execute('INSERT OR REPLACE INTO equipment VALUES(?,?,?)',(uid,skin['weapon'],skin['id']));message='Skin equipped.'
+     skin=self.skins[item['skin']];knives={'bayonet','butterfly','flipknife','gutknife','huntsman','karambit','knifect','knifetr','kukri','m9bayonet','nomad','paracod','shadowdaggers','skeleton','stiletto','talon'}
+     if skin['weapon'] in knives:
+      for knife in knives:c.execute('DELETE FROM equipment WHERE owner=? AND weapon=?',(uid,knife))
+     c.execute('INSERT OR REPLACE INTO equipment VALUES(?,?,?)',(uid,skin['weapon'],skin['id']));message='Skin equipped.'
     elif action=='unequip':
      item=c.execute('SELECT skin FROM items WHERE id=? AND owner=?',(target,uid)).fetchone()
      if not item or item['skin'] not in self.skins:raise ValueError('You do not own this skin.')
