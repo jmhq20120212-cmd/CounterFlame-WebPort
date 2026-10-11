@@ -7,6 +7,7 @@ COPY download_build.py /tmp/download_build.py
 RUN python /tmp/download_build.py
 RUN pip install --no-cache-dir -r LocalServer/requirements.txt
 COPY player_service.py LocalServer/player_service.py
+COPY economy.py community.py LocalServer/
 ENV CF_UNLIMITED_COINS_USERNAME=jesusinmuha
 ENV PORT=10000 CF_ENABLE_QA=0 CF_DATA_DIR=/tmp/counterflame-data PYTHONUNBUFFERED=1
 EXPOSE 10000

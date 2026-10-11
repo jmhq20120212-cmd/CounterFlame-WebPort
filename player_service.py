@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY, count INTEGER, re
   with self.db() as c:
    # Sold/traded skins cannot remain equipped after ownership changes.
    c.execute('DELETE FROM equipment WHERE owner=? AND NOT EXISTS(SELECT 1 FROM items WHERE owner=equipment.owner AND skin=equipment.skin)',(uid,))
+   c.commit()
    progress=c.execute('SELECT kills,claimed,xp FROM mission_progress WHERE owner=?',(uid,)).fetchone()
    result['missionKills']=min(10,progress['kills']) if progress else 0;result['missionClaimed']=bool(progress['claimed']) if progress else False;result['account']['xp']=progress['xp'] if progress else 0
    result['equipped']=[dict(r) for r in c.execute('SELECT weapon,skin FROM equipment WHERE owner=?',(uid,))]
