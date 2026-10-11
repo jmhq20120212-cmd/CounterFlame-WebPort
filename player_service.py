@@ -1,5 +1,5 @@
 """Account-backed game inventory. Passwords and session tokens are stored as hashes."""
-import hashlib, hmac, json, re, secrets, time
+import hashlib, hmac, ipaddress, json, re, secrets, time
 from economy import Economy
 from community import Community, ACTIONS
 
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS equipment(owner TEXT, weapon TEXT, skin TEXT, PRIMARY
 CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, owner TEXT, skin TEXT, price INTEGER, status TEXT, item TEXT, seller TEXT);
 CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY, owner TEXT, action TEXT, detail TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS mission_progress(owner TEXT PRIMARY KEY, kills INTEGER DEFAULT 0, claimed INTEGER DEFAULT 0, xp INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS registration_rewards(network_key TEXT PRIMARY KEY, owner TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY, count INTEGER, reset REAL);''')
   self.init_community()
  def record_kill(self,uid,weapon):
@@ -49,11 +50,18 @@ CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY, count INTEGER, re
    if action=='register':
     if cred:raise ValueError('Username unavailable.')
     uid=secrets.token_hex(5);salt=secrets.token_hex(16);digest=hashlib.pbkdf2_hmac('sha256',password.encode(),bytes.fromhex(salt),600000).hex()
-    c.execute('INSERT INTO accounts VALUES(?,?,?,?)',(uid,secrets.token_urlsafe(32),username,1000));c.execute('INSERT INTO credentials VALUES(?,?,?,?)',(uid,username,salt,digest));self.audit(c,uid,'register','Account created')
+    address=ipaddress.ip_address(peer);address=getattr(address,'ipv4_mapped',None) or address
+    network_key=self.digest('welcome:'+str(address))
+    claimed=c.execute('SELECT 1 FROM registration_rewards WHERE network_key=?',(network_key,)).fetchone()
+    bonus=0 if claimed else 1000
+    if not claimed:c.execute('INSERT INTO registration_rewards VALUES(?,?,?)',(network_key,uid,time.time()))
+    c.execute('INSERT INTO accounts VALUES(?,?,?,?)',(uid,secrets.token_urlsafe(32),username,bonus));c.execute('INSERT INTO credentials VALUES(?,?,?,?)',(uid,username,salt,digest));self.audit(c,uid,'register','Account created')
    else:
     salt=cred['salt'] if cred else '00'*16;digest=hashlib.pbkdf2_hmac('sha256',password.encode(),bytes.fromhex(salt),600000).hex()
     if not cred or not hmac.compare_digest(digest,cred['digest']):raise ValueError('Incorrect username or password.')
     uid=cred['owner']
+    address=ipaddress.ip_address(peer);address=getattr(address,'ipv4_mapped',None) or address
+    c.execute('INSERT OR IGNORE INTO registration_rewards VALUES(?,?,?)',(self.digest('welcome:'+str(address)),uid,time.time()))
    return self._session(c,uid)
  @staticmethod
  def audit(c,uid,action,detail):c.execute('INSERT INTO history(owner,action,detail,created) VALUES(?,?,?,?)',(uid,action,str(detail)[:500],time.time()))
@@ -73,7 +81,10 @@ CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY, count INTEGER, re
   self.refill_test_coins(account['id'])
   uid=account['id'];message='';reward='';view=str(m.get('profileId') or uid)
   if action=='signout':
-   with self.db() as c:c.execute('DELETE FROM sessions WHERE digest=?',(self.digest(token),))
+   with self.db() as c:
+    address=ipaddress.ip_address(peer);address=getattr(address,'ipv4_mapped',None) or address
+    c.execute('INSERT OR IGNORE INTO registration_rewards VALUES(?,?,?)',(self.digest('welcome:'+str(address)),uid,time.time()))
+    c.execute('DELETE FROM sessions WHERE digest=?',(self.digest(token),))
    return dict(ok=True,message='Signed out.')
   base_actions={'rename','offer','accept','reject','cancel','sell','buy','unlist','seen'}
   if action in ACTIONS:
